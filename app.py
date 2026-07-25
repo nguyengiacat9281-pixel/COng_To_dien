@@ -37,7 +37,7 @@ with col2:
 
 # Thành phần chụp ảnh (sẽ kích hoạt Camera Safari/Chrome trên iPhone)
 img_file = st.camera_input("Chụp ảnh mặt công tơ")
-img_file = st.file_uploader("Chụp hoặc chọn ảnh công tơ", type=["jpg", "jpeg", "png"])
+img_file = st.file_uploader("chọn ảnh công tơ", type=["jpg", "jpeg", "png"])
 
 def extract_numbers(image_np):
     """Trích xuất chuỗi chữ số từ hình ảnh bằng EasyOCR"""
