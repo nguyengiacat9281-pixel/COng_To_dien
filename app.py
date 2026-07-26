@@ -65,7 +65,7 @@ if img_file is not None:
     image = Image.open(img_file)
     img_np = np.array(image)
     
-    st.image(img_file, caption="Ảnh đã chọn", use_column_width=True)
+    st.image(img_file, caption="Ảnh đã chọn")
     
     with st.spinner("Đang nhận diện chỉ số..."):
         detected_value, raw_results = extract_numbers(img_np)
