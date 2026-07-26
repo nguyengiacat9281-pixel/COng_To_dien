@@ -36,7 +36,7 @@ with col2:
     location = st.text_input("Mã căn hộ / Vị trí:", placeholder="VD: Phòng 101")
 
 # Thành phần chụp ảnh (sẽ kích hoạt Camera Safari/Chrome trên iPhone)
-img_file = st.file_uploader("chọn ảnh công tơ", type=["jpg", "jpeg", "png"])
+    img_file = st.file_uploader("chọn ảnh công tơ", type=["jpg", "jpeg", "png"])
 
 def extract_numbers(image_np):
     """Trích xuất chuỗi chữ số từ hình ảnh bằng EasyOCR"""
