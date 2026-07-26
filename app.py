@@ -1,68 +1,91 @@
 ﻿import streamlit as st
 import easyocr
 import numpy as np
+import cv2
 from PIL import Image, ImageOps
 
 # 1. Cấu hình trang web
-st.set_page_config(page_title="Đọc Công Tơ Điện & Nước", page_icon="⚡", layout="centered")
+st.set_page_config(page_title="Đọc Công Tơ Điện", page_icon="⚡", layout="centered")
 
-st.title("⚡ 💧 Quản Lý Chỉ Số Công Tơ")
-st.caption("Chụp ảnh công tơ điện hoặc nước để tự động trích xuất số và xuất Excel.")
+st.title("⚡ Quản Lý Chỉ Số Công Tơ Điện")
+st.caption("Chụp ảnh công tơ điện để tự động nhận diện dãy số và tự động thêm đơn vị kWh.")
 
-# 2. Khởi tạo EasyOCR (chỉ tải 1 lần)
+# 2. Khởi tạo EasyOCR
 @st.cache_resource
 def load_ocr():
+    # allowlist chỉ cho phép đọc chữ số và chữ kWh
     return easyocr.Reader(['en'], gpu=False)
 
 reader = load_ocr()
 
-# 3. Khởi tạo Session State
-if "records" not in st.session_state:
-    st.session_state.records = []
+# 3. Hàm tiền xử lý ảnh tăng cường độ rõ của số
+def preprocess_image(image_np):
+    # Chuyển sang ảnh xám
+    gray = cv2.cvtColor(image_np, cv2.COLOR_RGB2GRAY)
+    
+    # Tăng tương phản bằng CLAHE
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    
+    return enhanced
 
-# --- KHU VỰC NHẬP DỮ LIỆU ---
-st.subheader("1. Chụp ảnh & Chọn loại công tơ")
-
-col1, col2 = st.columns(2)
-with col1:
-    meter_type = st.selectbox("Loại công tơ:", ["Điện", "Nước"])
-with col2:
-    location = st.text_input("Mã căn hộ / Vị trí:", placeholder="VD: Phòng 101")
-
-# Nút chọn/chụp ảnh
-img_file = st.file_uploader("Chụp hoặc chọn ảnh công tơ", type=["jpg", "jpeg", "png"])
-
-def extract_numbers(image_np):
-    results = reader.readtext(image_np)
-    digits_found = []
-    for bbox, text, prob in results:
+# 4. Hàm trích xuất dãy số chính xác theo tọa độ từ trái sang phải
+def extract_meter_reading(image_np):
+    # Tiền xử lý ảnh
+    processed_img = preprocess_image(image_np)
+    
+    # Cho EasyOCR nhận diện với cấu hình ưu tiên chữ số
+    results = reader.readtext(processed_img, allowlist='0123456789kWhkWh ')
+    
+    digits_with_pos = []
+    
+    for (bbox, text, prob) in results:
+        # Lấy tọa độ X trung bình để sắp xếp từ trái sang phải
+        x_min = bbox[0][0]
         clean_text = ''.join(c for c in text if c.isdigit())
-        if clean_text:
-            digits_found.append(clean_text)
-    if digits_found:
-        best_match = max(digits_found, key=len)
-        return best_match
-    return ""
+        if clean_text and prob > 0.15: # Lọc bỏ nhiễu
+            digits_with_pos.append((x_min, clean_text))
+            
+    # Nếu đọc bằng ảnh nâng cao không ra, đọc thử trên ảnh gốc
+    if not digits_with_pos:
+        results_raw = reader.readtext(image_np)
+        for (bbox, text, prob) in results_raw:
+            x_min = bbox[0][0]
+            clean_text = ''.join(c for c in text if c.isdigit())
+            if clean_text:
+                digits_with_pos.append((x_min, clean_text))
+
+    if not digits_with_pos:
+        return None
+
+    # Sắp xếp chuỗi số từ trái qua phải dựa vào tọa độ X
+    digits_with_pos.sort(key=lambda item: item[0])
+    
+    # Ghép tất cả các số lại với nhau
+    full_digits = ''.join([item[1] for item in digits_with_pos])
+    
+    return full_digits
+
+# --- GIAO DIỆN CHÍNH ---
+img_file = st.file_uploader("Chụp hoặc chọn ảnh công tơ điện", type=["jpg", "jpeg", "png"])
 
 if img_file is not None:
-    # Đọc ảnh và TỰ ĐỘNG SỬA GÓC XOAY từ iPhone (EXIF)
     image = Image.open(img_file)
-    image = ImageOps.exif_transpose(image)
+    image = ImageOps.exif_transpose(image) # Sửa góc xoay iPhone
+    image.thumbnail((1200, 1200)) # Nén kích thước phù hợp
     
-    # NÉN ẢNH để tránh ngốn RAM Streamlit Cloud & xử lý cực nhanh
-    image.thumbnail((1024, 1024))
-    
-    # Chuyển sang NumPy array
     img_np = np.array(image)
 
-    # Hiển thị ảnh đúng chiều
-    st.image(image, caption="Ảnh công tơ đã xử lý chiều chuẩn", use_container_width=True)
+    st.image(image, caption="Ảnh đã tải lên", use_container_width=True)
 
-    # Xử lý nhận diện
-    with st.spinner("Đang nhận diện chỉ số..."):
-        detected_value = extract_numbers(img_np)
+    with st.spinner("Đang xử lý và đọc chỉ số trong khung đỏ..."):
+        raw_number = extract_meter_reading(img_np)
 
-    if detected_value:
-        st.success(f"**Chỉ số đọc được:** {detected_value}")
+    if raw_number:
+        # Tự động gắn đơn vị kWh ở cuối
+        formatted_result = f"{raw_number} kWh"
+        
+        st.success("✅ **Đã nhận diện thành công!**")
+        st.markdown(f"### Chỉ số công tơ: **`{formatted_result}`**")
     else:
-        st.warning("Chưa đọc được rõ số, vui lòng chụp cận cảnh mặt số công tơ hơn.")
+        st.error("❌ Không thể đọc được dãy số. Vui lòng chụp rõ và gần hơn vào khung hiển thị số.")
