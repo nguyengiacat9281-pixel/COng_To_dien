@@ -1,6 +1,6 @@
 ﻿streamlit
-opencv-python-headless
 easyocr
 pandas
 Pillow
 openpyxl
+opencv-python-headless==4.8.1.78
